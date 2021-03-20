@@ -1,0 +1,628 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "actions": {
+            "Compose_-_Show_array_logs": {
+                "inputs": "@variables('array_logs')",
+                "runAfter": {
+                    "For_each_-_loop_through_ContentUris": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Compose"
+            },
+            "Compose_-_startTime_-_utcNow_minus_24_hours_-_yyyy-MM-ddThh:mm": {
+                "description": "formatDateTime(subtractFromTime(utcNow(),24,'Hour'),'yyyy-MM-ddThh:mm')",
+                "inputs": "@formatDateTime(subtractFromTime(utcNow(),24,'Hour'),'yyyy-MM-ddThh:mm')",
+                "runAfter": {
+                    "Parse_JSON_-_Environment_Variables": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Compose"
+            },
+            "Compose_Report_Number_of_ContentUris": {
+                "inputs": "@{length(variables('array_contenturi'))} items in variable array_contenturi",
+                "runAfter": {
+                    "Scope_-_Get_ContentUris": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Compose"
+            },
+            "Compose_endTime_-_utcNow_-_yyyy-MM-ddThh:mm": {
+                "description": "formatDateTime(utcNow(), 'yyyy-MM-ddThh:mm')",
+                "inputs": "@formatDateTime(utcNow(), 'yyyy-MM-ddThh:mm')",
+                "runAfter": {
+                    "Compose_-_startTime_-_utcNow_minus_24_hours_-_yyyy-MM-ddThh:mm": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Compose"
+            },
+            "For_each_-_loop_through_ContentUris": {
+                "actions": {
+                    "Condition_If_401_-_Retry": {
+                        "actions": {
+                            "Compose_Join_Get_Objects_Results_with_array_blob_retry": {
+                                "inputs": "@union(variables('array_logs'),json(body('HTTP_-_Get_Content_Blob_Retry')))",
+                                "runAfter": {
+                                    "HTTP_-_Get_Content_Blob_Retry": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Compose"
+                            },
+                            "Delay_30_Seconds_To_Allow_Auth_To_Propogate": {
+                                "inputs": {
+                                    "interval": {
+                                        "count": 30,
+                                        "unit": "Second"
+                                    }
+                                },
+                                "runAfter": {},
+                                "type": "Wait"
+                            },
+                            "HTTP_-_Get_Content_Blob_Retry": {
+                                "inputs": {
+                                    "headers": {
+                                        "Authorization": "@variables('string_access_token')",
+                                        "Content-Type": "application/json"
+                                    },
+                                    "method": "GET",
+                                    "uri": "@{item()}"
+                                },
+                                "runAfter": {
+                                    "HTTP_-_Start_Subscription_Retry": [
+                                        "Succeeded",
+                                        "Failed"
+                                    ]
+                                },
+                                "type": "Http"
+                            },
+                            "HTTP_-_Get_Token_Retry": {
+                                "inputs": {
+                                    "body": "client_id=@{body('Parse_JSON_-_Environment_Variables')?['clientID']}&client_Secret=@{body('Parse_JSON_-_Environment_Variables')?['clientSecret']}&resource=https://manage.office.com&grant_type=client_credentials",
+                                    "headers": {
+                                        "Authorization": "@variables('string_access_token')",
+                                        "Content-Type": "application/x-www-form-urlencoded"
+                                    },
+                                    "method": "POST",
+                                    "uri": "https://login.microsoftonline.com/@{body('Parse_JSON_-_Environment_Variables')?['tenantID']}/oauth2/token"
+                                },
+                                "runAfter": {
+                                    "Delay_30_Seconds_To_Allow_Auth_To_Propogate": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Http"
+                            },
+                            "HTTP_-_Start_Subscription_Retry": {
+                                "inputs": {
+                                    "headers": {
+                                        "Authorization": "@variables('string_access_token')",
+                                        "Content-Type": "application/json"
+                                    },
+                                    "method": "POST",
+                                    "uri": "https://manage.office.com/api/v1.0/@{body('Parse_JSON_-_Environment_Variables')?['tenantID']}/activity/feed/subscriptions/start?contentType=@{body('Parse_JSON_-_Environment_Variables')?['workload']}"
+                                },
+                                "runAfter": {
+                                    "Set_variable_string_access_token_retry": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Http"
+                            },
+                            "Set_variable_array_logs": {
+                                "inputs": {
+                                    "name": "array_logs",
+                                    "value": "@outputs('Compose_Join_Get_Objects_Results_with_array_blob_retry')"
+                                },
+                                "runAfter": {
+                                    "Compose_Join_Get_Objects_Results_with_array_blob_retry": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "SetVariable"
+                            },
+                            "Set_variable_string_access_token_retry": {
+                                "inputs": {
+                                    "name": "string_access_token",
+                                    "value": "@{concat(body('HTTP_-_Get_Token_Retry')?['token_type'],' ',body('HTTP_-_Get_Token_Retry')?['access_token'])}"
+                                },
+                                "runAfter": {
+                                    "HTTP_-_Get_Token_Retry": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "SetVariable"
+                            }
+                        },
+                        "else": {
+                            "actions": {
+                                "Compose_Join_Get_Objects_Results_with_array_logs": {
+                                    "inputs": "@union(variables('array_logs'),json(body('HTTP_-_Get_Content_Blob')))",
+                                    "runAfter": {},
+                                    "type": "Compose"
+                                },
+                                "Set_variable_array_logs_normal": {
+                                    "inputs": {
+                                        "name": "array_logs",
+                                        "value": "@outputs('Compose_Join_Get_Objects_Results_with_array_logs')"
+                                    },
+                                    "runAfter": {
+                                        "Compose_Join_Get_Objects_Results_with_array_logs": [
+                                            "Succeeded"
+                                        ]
+                                    },
+                                    "type": "SetVariable"
+                                }
+                            }
+                        },
+                        "expression": {
+                            "and": [
+                                {
+                                    "equals": [
+                                        "",
+                                        401
+                                    ]
+                                }
+                            ]
+                        },
+                        "runAfter": {
+                            "HTTP_-_Get_Content_Blob": [
+                                "Succeeded",
+                                "Failed"
+                            ]
+                        },
+                        "type": "If"
+                    },
+                    "HTTP_-_Get_Content_Blob": {
+                        "inputs": {
+                            "headers": {
+                                "Authorization": "@variables('string_access_token')",
+                                "Content-Type": "application/json"
+                            },
+                            "method": "GET",
+                            "uri": "@{item()}"
+                        },
+                        "runAfter": {},
+                        "type": "Http"
+                    }
+                },
+                "foreach": "@variables('array_contenturi')",
+                "runAfter": {
+                    "Compose_Report_Number_of_ContentUris": [
+                        "Succeeded"
+                    ]
+                },
+                "runtimeConfiguration": {
+                    "concurrency": {
+                        "repetitions": 50
+                    }
+                },
+                "type": "Foreach"
+            },
+            "HTTP_-_Get_Token": {
+                "inputs": {
+                    "body": "client_id=@{body('Parse_JSON_-_Environment_Variables')?['clientID']}&client_Secret=@{body('Parse_JSON_-_Environment_Variables')?['clientSecret']}&resource=https://manage.office.com&grant_type=client_credentials",
+                    "headers": {
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    "method": "POST",
+                    "uri": "https://login.microsoftonline.com/@{body('Parse_JSON_-_Environment_Variables')?['tenantID']}/oauth2/token"
+                },
+                "runAfter": {
+                    "Initialize_variable_string_access_token": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Http"
+            },
+            "HTTP_-_Start_Subscription": {
+                "inputs": {
+                    "headers": {
+                        "Authorization": " @{variables('string_access_token')}",
+                        "Content-Type": "application/json"
+                    },
+                    "method": "POST",
+                    "uri": "https://manage.office.com/api/v1.0/@{body('Parse_JSON_-_Environment_Variables')?['tenantID']}/activity/feed/subscriptions/start?contentType=@{body('Parse_JSON_-_Environment_Variables')?['workload']}"
+                },
+                "runAfter": {
+                    "Set_variable_string_access_token": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "Http"
+            },
+            "Initialize_variable_array_contenturi": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "array_contenturi",
+                            "type": "array"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_array_logs": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_array_logs": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "array_logs",
+                            "type": "Array"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Compose_endTime_-_utcNow_-_yyyy-MM-ddThh:mm": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_array_workloads": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "array_workloads",
+                            "type": "array",
+                            "value": [
+                                "Audit.General",
+                                "Audit.SharePoint",
+                                "Audit.Exchange",
+                                "Audit.AzureActiveDirectory"
+                            ]
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_array_contenturi": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_bool_loopDone": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "bool_loopDone",
+                            "type": "boolean"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_array_workloads": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_string_NextPageUri": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "string_NextPageUri",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_bool_loopDone": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Initialize_variable_string_access_token": {
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "string_access_token",
+                            "type": "string"
+                        }
+                    ]
+                },
+                "runAfter": {
+                    "Initialize_variable_string_NextPageUri": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "InitializeVariable"
+            },
+            "Parse_JSON_-_Environment_Variables": {
+                "inputs": {
+                    "content": {
+                        "clientID": "<Your App Client Id here>",
+                        "clientSecret": "<Your client secret here>",
+                        "tenantID": "<Your tenant ID here>",
+                        "workload": "Audit.SharePoint"
+                    },
+                    "schema": {
+                        "properties": {
+                            "clientID": {
+                                "type": "string"
+                            },
+                            "clientSecret": {
+                                "type": "string"
+                            },
+                            "tenantID": {
+                                "type": "string"
+                            },
+                            "workload": {
+                                "type": "string"
+                            }
+                        },
+                        "type": "object"
+                    }
+                },
+                "runAfter": {},
+                "type": "ParseJson"
+            },
+            "Scope_-_Get_ContentUris": {
+                "actions": {
+                    "Apply_to_each_-_Get_Content_Blob(s)": {
+                        "actions": {
+                            "Append_to_array_variable": {
+                                "inputs": {
+                                    "name": "array_contenturi",
+                                    "value": "@item()['contentUri']"
+                                },
+                                "runAfter": {},
+                                "type": "AppendToArrayVariable"
+                            }
+                        },
+                        "foreach": "@body('HTTP_-_Get_Content_Blobs')",
+                        "runAfter": {
+                            "Compose_Testing_Values": [
+                                "Succeeded"
+                            ]
+                        },
+                        "runtimeConfiguration": {
+                            "concurrency": {
+                                "repetitions": 50
+                            }
+                        },
+                        "type": "Foreach"
+                    },
+                    "Compose_Testing_Values": {
+                        "inputs": "@{length(body('HTTP_-_Get_Content_Blobs'))}\n@{utcNow()}\n@{outputs('HTTP_-_Get_Content_Blobs')['headers']}\n@{outputs('HTTP_-_Get_Content_Blobs')['headers']?['NextPageUri']}\n@{outputs('HTTP_-_Get_Content_Blobs')['headers']?['X-Powered-By']}",
+                        "runAfter": {
+                            "HTTP_-_Get_Content_Blobs": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "Compose"
+                    },
+                    "Condition_if_NextPageUri_in_Headers": {
+                        "actions": {
+                            "Do_until_More_NextPageUri": {
+                                "actions": {
+                                    "Apply_to_each_-_Get_Content_Blob(s)_2": {
+                                        "actions": {
+                                            "Append_to_array_variable_2": {
+                                                "inputs": {
+                                                    "name": "array_contenturi",
+                                                    "value": "@item()['contentUri']"
+                                                },
+                                                "runAfter": {},
+                                                "type": "AppendToArrayVariable"
+                                            }
+                                        },
+                                        "foreach": "@body('HTTP_-_Get_Content_Blobs_2')",
+                                        "runAfter": {
+                                            "Condition_-_If_Status_Code_401": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "runtimeConfiguration": {
+                                            "concurrency": {
+                                                "repetitions": 50
+                                            }
+                                        },
+                                        "type": "Foreach"
+                                    },
+                                    "Condition_-_If_Status_Code_401": {
+                                        "actions": {
+                                            "HTTP_-_Get_Content_Blobs_3": {
+                                                "inputs": {
+                                                    "headers": {
+                                                        "Authorization": "@variables('string_access_token')",
+                                                        "Content-Type": "application/json"
+                                                    },
+                                                    "method": "GET",
+                                                    "uri": "@variables('string_NextPageUri')"
+                                                },
+                                                "runAfter": {
+                                                    "Set_variable": [
+                                                        "Succeeded"
+                                                    ]
+                                                },
+                                                "type": "Http"
+                                            },
+                                            "HTTP_-_Get_Token_Reconnect": {
+                                                "inputs": {
+                                                    "body": "client_id=@{body('Parse_JSON_-_Environment_Variables')?['clientID']}&client_Secret=@{body('Parse_JSON_-_Environment_Variables')?['clientSecret']}&resource=https://manage.office.com&grant_type=client_credentials",
+                                                    "headers": {
+                                                        "Content-Type": "application/x-www-form-urlencoded"
+                                                    },
+                                                    "method": "POST",
+                                                    "uri": "https://login.microsoftonline.com/@{body('Parse_JSON_-_Environment_Variables')?['tenantID']}/oauth2/token"
+                                                },
+                                                "runAfter": {},
+                                                "type": "Http"
+                                            },
+                                            "Set_variable": {
+                                                "inputs": {
+                                                    "name": "string_access_token",
+                                                    "value": "@{concat(body('HTTP_-_Get_Token_Reconnect')?['token_type'],' ',body('HTTP_-_Get_Token_Reconnect')?['access_token'])}"
+                                                },
+                                                "runAfter": {
+                                                    "HTTP_-_Get_Token_Reconnect": [
+                                                        "Succeeded"
+                                                    ]
+                                                },
+                                                "type": "SetVariable"
+                                            }
+                                        },
+                                        "expression": {
+                                            "and": [
+                                                {
+                                                    "equals": [
+                                                        "@outputs('HTTP_-_Get_Content_Blobs_2')['statusCode']",
+                                                        401
+                                                    ]
+                                                }
+                                            ]
+                                        },
+                                        "runAfter": {
+                                            "HTTP_-_Get_Content_Blobs_2": [
+                                                "Succeeded",
+                                                "Failed"
+                                            ]
+                                        },
+                                        "type": "If"
+                                    },
+                                    "Condition_check_if_NextPageUri": {
+                                        "actions": {
+                                            "Set_variable_string_NextPageUri_Further": {
+                                                "inputs": {
+                                                    "name": "string_NextPageUri",
+                                                    "value": "@{outputs('HTTP_-_Get_Content_Blobs_2')['headers']?['NextPageUri']}"
+                                                },
+                                                "runAfter": {},
+                                                "type": "SetVariable"
+                                            }
+                                        },
+                                        "else": {
+                                            "actions": {
+                                                "Set_variable_bool_loopDone_True": {
+                                                    "inputs": {
+                                                        "name": "bool_loopDone",
+                                                        "value": "@true"
+                                                    },
+                                                    "runAfter": {},
+                                                    "type": "SetVariable"
+                                                }
+                                            }
+                                        },
+                                        "expression": {
+                                            "not": {
+                                                "equals": [
+                                                    "@outputs('HTTP_-_Get_Content_Blobs_2')['headers']?['NextPageUri']",
+                                                    "@null"
+                                                ]
+                                            }
+                                        },
+                                        "runAfter": {
+                                            "Apply_to_each_-_Get_Content_Blob(s)_2": [
+                                                "Succeeded"
+                                            ]
+                                        },
+                                        "type": "If"
+                                    },
+                                    "HTTP_-_Get_Content_Blobs_2": {
+                                        "inputs": {
+                                            "headers": {
+                                                "Authorization": "@variables('string_access_token')",
+                                                "Content-Type": "application/json"
+                                            },
+                                            "method": "GET",
+                                            "uri": "@variables('string_NextPageUri')"
+                                        },
+                                        "runAfter": {},
+                                        "type": "Http"
+                                    }
+                                },
+                                "expression": "@equals(variables('bool_loopDone'), true)",
+                                "limit": {
+                                    "count": 5000,
+                                    "timeout": "PT1H"
+                                },
+                                "runAfter": {
+                                    "Set_variable_string_NextPageUri": [
+                                        "Succeeded"
+                                    ]
+                                },
+                                "type": "Until"
+                            },
+                            "Set_variable_string_NextPageUri": {
+                                "inputs": {
+                                    "name": "string_NextPageUri",
+                                    "value": "@{outputs('HTTP_-_Get_Content_Blobs')['headers']['NextPageUri']}"
+                                },
+                                "runAfter": {},
+                                "type": "SetVariable"
+                            }
+                        },
+                        "expression": {
+                            "not": {
+                                "equals": [
+                                    "@outputs('HTTP_-_Get_Content_Blobs')['headers']?['NextPageUri']",
+                                    "@null"
+                                ]
+                            }
+                        },
+                        "runAfter": {
+                            "Apply_to_each_-_Get_Content_Blob(s)": [
+                                "Succeeded"
+                            ]
+                        },
+                        "type": "If"
+                    },
+                    "HTTP_-_Get_Content_Blobs": {
+                        "inputs": {
+                            "headers": {
+                                "Authorization": "@variables('string_access_token')",
+                                "Content-Type": "application/json"
+                            },
+                            "method": "GET",
+                            "uri": "https://manage.office.com/api/v1.0/@{body('Parse_JSON_-_Environment_Variables')?['tenantID']}/activity/feed/subscriptions/content?contentType=@{body('Parse_JSON_-_Environment_Variables')?['workload']}&startTime=@{outputs('Compose_-_startTime_-_utcNow_minus_24_hours_-_yyyy-MM-ddThh:mm')}&endTime=@{outputs('Compose_endTime_-_utcNow_-_yyyy-MM-ddThh:mm')}"
+                        },
+                        "runAfter": {},
+                        "type": "Http"
+                    }
+                },
+                "runAfter": {
+                    "HTTP_-_Start_Subscription": [
+                        "Succeeded",
+                        "Failed"
+                    ]
+                },
+                "type": "Scope"
+            },
+            "Set_variable_string_access_token": {
+                "inputs": {
+                    "name": "string_access_token",
+                    "value": "@{concat(body('HTTP_-_Get_Token')?['token_type'],' ',body('HTTP_-_Get_Token')?['access_token'])}"
+                },
+                "runAfter": {
+                    "HTTP_-_Get_Token": [
+                        "Succeeded"
+                    ]
+                },
+                "type": "SetVariable"
+            }
+        },
+        "contentVersion": "1.0.0.0",
+        "parameters": {},
+        "triggers": {
+            "Recurrence": {
+                "recurrence": {
+                    "frequency": "Day",
+                    "interval": 1,
+                    "startTime": "2020-01-02T21:00:00.000Z"
+                },
+                "type": "Recurrence"
+            }
+        }
+    },
+    "parameters": {}
+}
